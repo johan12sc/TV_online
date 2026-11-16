@@ -63,7 +63,8 @@ select:focus, input[type="search"]:focus { border-color: var(--accent); }
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: 1fr 360px;
+  /* minmax(0, …) : une colonne ne peut pas dépasser la largeur de l'écran */
+  grid-template-columns: minmax(0, 1fr) 360px;
   gap: 20px;
   padding: 20px;
 }
@@ -199,13 +200,6 @@ video { width: 100%; height: 100%; display: block; background: #000; }
 
 .chaines .texte { min-width: 0; }
 
-/* ---------- Téléphone ---------- */
-@media (max-width: 860px) {
-  body { height: auto; min-height: 100vh; }
-  .page { grid-template-columns: 1fr; padding: 12px; }
-  .liste { max-height: 60vh; }
-}
-
 /* ---------- Bouton Revérifier ---------- */
 .outils { display: flex; gap: 10px; align-items: center; }
 
@@ -221,3 +215,49 @@ video { width: 100%; height: 100%; display: block; background: #000; }
 
 #reverifier:hover:not(:disabled) { border-color: var(--accent); }
 #reverifier:disabled { opacity: 0.5; cursor: default; }
+
+/* ---------- Téléphone et tablette ---------- */
+@media (max-width: 860px) {
+  body { height: auto; min-height: 100vh; }
+
+  .entete { padding: 10px 12px; gap: 10px; }
+  .entete h1 { font-size: 1rem; white-space: nowrap; }
+  .outils { gap: 8px; min-width: 0; }
+  #reverifier { padding: 8px 10px; font-size: 0.85rem; }
+  select { min-width: 0; max-width: 140px; padding: 8px 10px; }
+
+  /* 16px minimum : sinon l'iPhone zoome tout seul quand on touche le champ */
+  select, input[type="search"] { font-size: 16px; }
+
+  .page {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+    padding: 0 0 16px;
+  }
+
+  /* Le lecteur reste collé en haut quand on fait défiler la liste */
+  .lecteur {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    background: var(--fond);
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--bord);
+  }
+
+  .ecran { border-radius: 0; max-height: none; width: 100%; }
+
+  .en-cours { margin-top: 10px; padding: 0 12px; gap: 10px; }
+  .en-cours img { width: 40px; height: 40px; }
+  .nom-en-cours { font-size: 1rem; }
+
+  .liste { margin: 0 12px; padding: 12px; }
+  .chaines { overflow: visible; }
+  .chaines li { padding: 10px 6px; }
+}
+
+/* ---------- Petits téléphones ---------- */
+@media (max-width: 380px) {
+  .entete h1 { font-size: 0.9rem; }
+  select { max-width: 110px; }
+}
