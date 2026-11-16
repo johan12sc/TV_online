@@ -19,6 +19,8 @@ let urlActive = null;      // flux en cours de lecture
 let hls = null;            // instance hls.js
 let aDemarre = false;      // la chaîne en cours a-t-elle affiché de l'image ?
 let chargement = 0;        // numéro du chargement en cours (pour ignorer les anciens)
+let reprises = 0;          // reconnexions automatiques d'affilée sur la chaîne en cours
+const MAX_REPRISES = 5;
 
 const attendre = ms => new Promise(r => setTimeout(r, ms));
 
@@ -67,7 +69,9 @@ function afficherCategories() {
   // Une chaîne peut avoir plusieurs catégories séparées par ";"
   const noms = new Set();
   chaines.forEach(c => c.categorie.split(";").forEach(n => noms.add(n)));
-  const liste = ["Toutes", ...[...noms].sort()];
+  // « Animé » est placé juste après « Toutes » pour être trouvé facilement
+  const autres = [...noms].filter(n => n !== "Animé").sort();
+  const liste = ["Toutes", ...(noms.has("Animé") ? ["Animé"] : []), ...autres];
 
   categoriesEl.innerHTML = "";
   liste.forEach(nom => {
@@ -139,18 +143,20 @@ function afficherMessage(texte) {
 // Dès que l'image s'affiche, on sait que la chaîne fonctionne
 video.addEventListener("playing", () => {
   aDemarre = true;
+  reprises = 0;  // l'image est revenue : on remet le compteur de reconnexions à zéro
   afficherMessage("");
 });
 
-function lire(chaine) {
+// reconnexion = true quand on relance tout seul une chaîne qui s'est coupée
+function lire(chaine, reconnexion = false) {
   urlActive = chaine.url;
-  aDemarre = false;
+  if (!reconnexion) { aDemarre = false; reprises = 0; }
   nomEnCours.textContent = chaine.nom;
   categorieEnCours.textContent = chaine.categorie.replaceAll(";", " · ");
   logoEnCours.hidden = !chaine.logo;
   if (chaine.logo) logoEnCours.src = chaine.logo;
   afficherChaines();
-  afficherMessage("Connexion au flux…");
+  afficherMessage(reconnexion ? "Reconnexion…" : "Connexion au flux…");
 
   // On arrête proprement le flux précédent
   if (hls) { hls.destroy(); hls = null; }
@@ -181,7 +187,13 @@ function enPanne(chaine) {
   if (chaine.url !== urlActive) return;
 
   if (aDemarre) {
-    // Elle marchait puis s'est coupée : simple coupure, on la garde dans la liste
+    // Elle marchait puis s'est coupée (souvent pendant une pub) : on se reconnecte tout seul
+    if (reprises < MAX_REPRISES) {
+      reprises++;
+      afficherMessage("Reconnexion…");
+      setTimeout(() => { if (chaine.url === urlActive) lire(chaine, true); }, 1500);
+      return;
+    }
     afficherMessage("Le flux s'est interrompu. Clique à nouveau sur la chaîne pour relancer.");
     return;
   }

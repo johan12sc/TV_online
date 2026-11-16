@@ -12,10 +12,17 @@
     <h1><span class="point"></span> Télé en ligne</h1>
     <div class="outils">
       <button id="reverifier" title="Retélécharger la playlist et retester toutes les chaînes">Revérifier</button>
-      <select id="pays" aria-label="Pays">
-        {% for code, nom in pays.items() %}
-          <option value="{{ code }}">{{ nom }}</option>
-        {% endfor %}
+      <select id="pays" aria-label="Pays ou thème">
+        <optgroup label="Pays">
+          {% for code, nom in pays.items() %}
+            <option value="{{ code }}">{{ nom }}</option>
+          {% endfor %}
+        </optgroup>
+        <optgroup label="Thèmes">
+          {% for code, nom in themes.items() %}
+            <option value="{{ code }}">{{ nom }}</option>
+          {% endfor %}
+        </optgroup>
       </select>
     </div>
   </header>

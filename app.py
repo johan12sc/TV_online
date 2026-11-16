@@ -34,7 +34,19 @@ app = Flask(__name__)
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
 # Adresse des playlists publiées par iptv-org (une par pays)
-URL_PLAYLIST = "https://iptv-org.github.io/iptv/countries/{code}.m3u"
+URL_PAYS = "https://iptv-org.github.io/iptv/countries/{code}.m3u"
+URL_THEME = "https://iptv-org.github.io/iptv/categories/{code}.m3u"
+
+# Thèmes proposés dans le menu : chaînes du monde entier, triées par sujet
+THEMES = {
+    "animation": "Animation & animé",
+    "kids": "Enfants",
+}
+
+# Mots qui reconnaissent une chaîne d'animé japonais (pour le filtre « Animé »)
+MOTS_ANIME = ["anime", "animé", "manga", "otaku", "crunchyroll", "hidive", "naruto",
+              "one piece", "conan", "pokemon", "pokémon", "dragon ball", "sailor moon",
+              "yu-gi-oh", "inazuma", "beyblade", "boruto", "captain tsubasa"]
 
 # Pays proposés dans le menu (code ISO -> nom affiché)
 PAYS = {
@@ -105,6 +117,9 @@ def parser_m3u(texte):
                 "logo": attributs.get("tvg-logo", ""),
                 "categorie": attributs.get("group-title", "") or "Autres",
             }
+            # On ajoute la catégorie « Animé » aux chaînes reconnues par leur nom
+            if any(mot in nom.lower() for mot in MOTS_ANIME):
+                infos["categorie"] += ";Animé"
 
         elif ligne and not ligne.startswith("#") and infos:
             # Première ligne non commentée après #EXTINF = le lien du flux
@@ -119,7 +134,8 @@ def telecharger_playlist(code):
     """Télécharge la playlist ; si GitHub ne répond pas, reprend la copie locale."""
     copie = DOSSIER_CACHE / f"{code}.m3u"
     try:
-        reponse = requests.get(URL_PLAYLIST.format(code=code), timeout=20)
+        modele = URL_THEME if code in THEMES else URL_PAYS
+        reponse = requests.get(modele.format(code=code), timeout=20)
         reponse.raise_for_status()
         reponse.encoding = "utf-8"
         copie.write_text(reponse.text, encoding="utf-8")
@@ -131,19 +147,26 @@ def telecharger_playlist(code):
 
 
 # ---------- 2. Tester un flux ----------
+def cors_ok(reponse):
+    """Vrai si le serveur autorise notre page à lire ce fichier (règle CORS du navigateur)."""
+    return reponse.headers.get("Access-Control-Allow-Origin") in ("*", ORIGINE)
+
+
 def lire_playlist_hls(url):
-    """Télécharge un fichier .m3u8 et renvoie ses lignes, ou None s'il ne passe pas."""
+    """Télécharge un fichier .m3u8.
+
+    Renvoie (lignes, adresse finale après redirection, CORS autorisé ?)
+    ou None si ce n'est pas une playlist HLS valide.
+    """
     reponse = requests.get(url, headers=ENTETES, timeout=DELAI, stream=True)
     try:
         if reponse.status_code != 200:
             return None
-        # Le navigateur refuse un flux qui n'autorise pas notre page (règle CORS)
-        if reponse.headers.get("Access-Control-Allow-Origin") not in ("*", ORIGINE):
-            return None
         debut = reponse.raw.read(200_000, decode_content=True).decode("utf-8", "ignore")
         if not debut.lstrip().startswith("#EXTM3U"):
             return None  # ce n'est pas un flux HLS : le lecteur ne saura pas le lire
-        return [ligne.strip() for ligne in debut.splitlines() if ligne.strip()]
+        lignes = [ligne.strip() for ligne in debut.splitlines() if ligne.strip()]
+        return lignes, reponse.url, cors_ok(reponse)
     finally:
         reponse.close()
 
@@ -153,21 +176,24 @@ def flux_fonctionne(url):
 
     Un flux HLS a souvent 2 niveaux :
       playlist principale -> playlist d'une qualité -> morceaux de vidéo (segments)
+    À chaque niveau, le serveur doit autoriser notre page à lire le fichier (CORS).
     """
     try:
         for _ in range(3):  # on descend de niveau en niveau
-            lignes = lire_playlist_hls(url)
-            if lignes is None:
+            resultat = lire_playlist_hls(url)
+            if resultat is None:
+                return False
+            lignes, url, autorise = resultat
+            if not autorise:
                 return False
             liens = [urljoin(url, l) for l in lignes if not l.startswith("#")]
             if not liens:
                 return False
             if any(l.startswith("#EXTINF") for l in lignes):
-                # On est au dernier niveau : on teste le dernier morceau de vidéo
+                # Dernier niveau : on teste le dernier morceau de vidéo
                 segment = requests.get(liens[-1], headers=ENTETES, timeout=DELAI, stream=True)
                 segment.close()
-                return (segment.status_code in (200, 206)
-                        and segment.headers.get("Access-Control-Allow-Origin") in ("*", ORIGINE))
+                return segment.status_code in (200, 206) and cors_ok(segment)
             url = liens[0]  # playlist principale : on suit la première qualité
         return False
     except (requests.RequestException, OSError, ValueError):
@@ -232,14 +258,14 @@ def verifier_pays(code):
 # ---------- 5. Les routes web ----------
 @app.route("/")
 def accueil():
-    return render_template("index.html", pays=PAYS)
+    return render_template("index.html", pays=PAYS, themes=THEMES)
 
 
 @app.route("/api/chaines")
 def api_chaines():
     code = request.args.get("pays", "fr").lower()
-    if code not in PAYS:
-        return jsonify({"erreur": "Pays inconnu"}), 400
+    if code not in PAYS and code not in THEMES:
+        return jsonify({"erreur": "Choix inconnu"}), 400
     forcer = request.args.get("forcer") == "1"
 
     with VERROU:
