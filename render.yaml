@@ -1,0 +1,12 @@
+# Configuration pour l'hébergement sur Render (render.com)
+services:
+  - type: web
+    name: tele-en-ligne
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    # 1 seul worker : l'avancement des tests est gardé en mémoire
+    startCommand: gunicorn app:app --workers 1 --threads 8 --timeout 120
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.7
